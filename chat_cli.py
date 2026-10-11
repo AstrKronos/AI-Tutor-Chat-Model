@@ -13,7 +13,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from services.ai import PLACEHOLDERS, generate_tutor_reply, get_active_provider
+from services.ai import (
+    PLACEHOLDERS,
+    generate_tutor_reply,
+    get_active_provider,
+    normalize_grade,
+)
 
 MODE_LABELS = {
     "socratic": "Socratic Method",
@@ -75,35 +80,54 @@ def ensure_api_key():
             os.environ["GEMINI_API_KEY"] = user_key
 
 
+def prompt_for_grade() -> str:
+    """Prompt the user to choose their grade from 9th to 12th."""
+    print("Select your Class / Grade (9th to 12th):")
+    print("  [9]  Class 9th  CBSE")
+    print("  [10] Class 10th CBSE")
+    print("  [11] Class 11th CBSE")
+    print("  [12] Class 12th CBSE")
+    while True:
+        raw = input("Enter grade [9/10/11/12, default=10]: ").strip()
+        if not raw:
+            return "10"
+        try:
+            return normalize_grade(raw)
+        except ValueError as err:
+            print(f"  [!] {err}")
+
+
 def interactive_chat():
     ensure_api_key()
     provider = get_active_provider().upper()
 
     print("\n" + "=" * 75)
-    print(f"  CLASS 10 CBSE AI TUTOR - INTERACTIVE 3-MODE TESTER ({provider})")
+    print(f"  CBSE AI TUTOR (CLASSES 9TH TO 12TH) - INTERACTIVE TESTER ({provider})")
     print("=" * 75)
+
+    current_grade = prompt_for_grade()
+    print("-" * 75)
     print("Select a Function Mode:")
     print("  1. Socratic Method      (Hints + 1 question, no direct answers)")
     print("  2. Detailed Explanation (Deep conceptual clarity, analogies & mechanisms)")
-    print("  3. Exam Ready           (CBSE Board format: keywords, formulas, examiner traps)")
+    print("  3. Exam Ready           (CBSE Exam format: keywords, formulas, examiner traps)")
     print("-" * 75)
     choice = input("Enter choice [1/2/3, default=1]: ").strip()
 
     mode_map = {"1": "socratic", "2": "detailed_explanation", "3": "exam_ready"}
     current_mode = mode_map.get(choice, "socratic")
 
-    print(f"\n[Active Mode: {MODE_LABELS[current_mode]}]")
-    print("Mode Switch Commands anytime in chat:")
-    print("  - Type '/socratic' to switch to Socratic Method")
-    print("  - Type '/detailed' to switch to Detailed Explanation")
-    print("  - Type '/exam'     to switch to Exam Ready")
-    print("  - Type 'clear' to reset history | 'exit' to quit\n" + "=" * 75)
+    print(f"\n[Active Setup: Class {current_grade}th CBSE | Mode: {MODE_LABELS[current_mode]}]")
+    print("Quick Commands anytime in chat:")
+    print("  - Mode switch : '/socratic', '/detailed', or '/exam'")
+    print("  - Grade switch: '/9', '/10', '/11', '/12' (or '/grade')" )
+    print("  - Session     : 'clear' to reset history | 'exit' to quit\n" + "=" * 75)
 
     history = []
 
     while True:
         try:
-            user_input = input(f"\nYou [{MODE_LABELS[current_mode]}] > ").strip()
+            user_input = input(f"\nYou [Class {current_grade}th | {MODE_LABELS[current_mode]}] > ").strip()
         except (KeyboardInterrupt, EOFError):
             print("\nExiting chat. Happy studying!")
             break
@@ -111,27 +135,51 @@ def interactive_chat():
         if not user_input:
             continue
 
-        if user_input.lower() in ("exit", "quit"):
+        cmd = user_input.lower()
+
+        if cmd in ("exit", "quit"):
             print("Exiting chat. Goodbye!")
             break
 
-        if user_input.lower() == "clear":
+        if cmd == "clear":
             history = []
             print("[History cleared. Starting fresh!]")
             continue
 
+        # Grade switching shortcuts
+        if cmd in ("/9", "/9th", "/grade 9", "grade 9"):
+            current_grade = "9"
+            print(f"[Switched Grade to: Class {current_grade}th CBSE]")
+            continue
+        if cmd in ("/10", "/10th", "/grade 10", "grade 10"):
+            current_grade = "10"
+            print(f"[Switched Grade to: Class {current_grade}th CBSE]")
+            continue
+        if cmd in ("/11", "/11th", "/grade 11", "grade 11"):
+            current_grade = "11"
+            print(f"[Switched Grade to: Class {current_grade}th CBSE]")
+            continue
+        if cmd in ("/12", "/12th", "/grade 12", "grade 12"):
+            current_grade = "12"
+            print(f"[Switched Grade to: Class {current_grade}th CBSE]")
+            continue
+        if cmd == "/grade":
+            current_grade = prompt_for_grade()
+            print(f"[Switched Grade to: Class {current_grade}th CBSE]")
+            continue
+
         # Mode switching shortcuts
-        if user_input.lower() in ("/socratic", "/mode 1", "mode 1"):
+        if cmd in ("/socratic", "/mode 1", "mode 1"):
             current_mode = "socratic"
-            print(f"[Switched to: {MODE_LABELS[current_mode]}]")
+            print(f"[Switched Mode to: {MODE_LABELS[current_mode]}]")
             continue
-        if user_input.lower() in ("/detailed", "/mode 2", "mode 2"):
+        if cmd in ("/detailed", "/mode 2", "mode 2"):
             current_mode = "detailed_explanation"
-            print(f"[Switched to: {MODE_LABELS[current_mode]}]")
+            print(f"[Switched Mode to: {MODE_LABELS[current_mode]}]")
             continue
-        if user_input.lower() in ("/exam", "/mode 3", "mode 3"):
+        if cmd in ("/exam", "/mode 3", "mode 3"):
             current_mode = "exam_ready"
-            print(f"[Switched to: {MODE_LABELS[current_mode]}]")
+            print(f"[Switched Mode to: {MODE_LABELS[current_mode]}]")
             continue
 
         print("\nTutor is thinking...")
@@ -140,8 +188,9 @@ def interactive_chat():
                 student_message=user_input,
                 history=history,
                 mode=current_mode,
+                grade=current_grade,
             )
-            print(f"\nTutor [{MODE_LABELS[current_mode]}] >\n{reply}\n")
+            print(f"\nTutor [Class {current_grade}th | {MODE_LABELS[current_mode]}] >\n{reply}\n")
             history.append({"role": "user", "content": user_input})
             history.append({"role": "assistant", "content": reply})
         except Exception as e:
