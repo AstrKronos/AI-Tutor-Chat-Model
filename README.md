@@ -7,7 +7,7 @@ A lightweight, guardrailed Python backend for a CBSE AI Tutor supporting **Class
 ## Project Structure
 
 ```text
-C:\Pysustain\
+C:\Socra\
 ├── main.py                    # FastAPI app (/chat and /health endpoints)
 ├── chat_cli.py                # Interactive CLI tool (asks for Grade 9th–12th & Function Mode)
 ├── prompts/
@@ -42,13 +42,13 @@ C:\Pysustain\
 
 ### Interactive Terminal Chat (Prompts for Grade 9th–12th & Mode)
 ```powershell
-cd C:\Pysustain
+cd C:\Socra
 .\.venv\Scripts\python.exe chat_cli.py
 ```
 
 ### FastAPI Server
 ```powershell
-cd C:\Pysustain
+cd C:\Socra
 .\.venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
