@@ -1,4 +1,4 @@
-import logging
+﻿import logging
 import os
 import time
 from typing import List, Optional
@@ -23,15 +23,15 @@ logging.basicConfig(
 logger = logging.getLogger("ai_tutor_api")
 
 app = FastAPI(
-    title="CBSE AI Tutor API (Classes 9th to 12th)",
+    title="CBSE AI Tutor API (Classes 9th to 12th — Local Qwen 2.5 7B)",
     description=(
-        "Backend API for a CBSE AI Tutor supporting Classes 9th to 12th and 3 function modes "
-        "('socratic', 'detailed_explanation', 'exam_ready')."
+        "Offline local backend API for a CBSE AI Tutor running natively on Qwen 2.5 7B, "
+        "supporting Classes 9th to 12th and 3 function modes ('socratic', 'detailed_explanation', 'exam_ready')."
     ),
-    version="1.1.0",
+    version="2.0.0",
 )
 
-# CORS Middleware (Hackathon setup - allowing all origins)
+# CORS Middleware (allowing all origins)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -164,24 +164,13 @@ class ChatResponse(BaseModel):
 
 @app.get("/health", tags=["System"])
 def health_check():
-    """Health check endpoint to verify backend service status."""
-    ai_provider = (os.getenv("AI_PROVIDER") or "opencode").strip().lower()
-    if ai_provider == "gemini":
-        provider_label = "Google Gemini"
-        active_model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
-    elif ai_provider == "nvidia":
-        provider_label = "NVIDIA NIM"
-        active_model = os.getenv("NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct")
-    else:
-        provider_label = "OpenCode Zen"
-        active_model = os.getenv("OPENCODE_MODEL", "nemotron-3.5-lightning-free")
-
+    """Health check endpoint to verify local backend service status."""
     return {
         "status": "healthy",
         "service": "CBSE AI Tutor (Classes 9th to 12th)",
         "supported_grades": ["9", "10", "11", "12"],
-        "provider": provider_label,
-        "model": active_model,
+        "provider": "Local Ollama (Offline)",
+        "model": os.getenv("LOCAL_MODEL", "qwen2.5:7b"),
     }
 
 
@@ -189,7 +178,7 @@ def health_check():
 async def chat(request: ChatRequest):
     """
     Primary chat endpoint for students (Classes 9th to 12th).
-    Invokes the CBSE AI tutor in the selected grade ('9'–'12') and mode ('socratic', 'detailed_explanation', or 'exam_ready').
+    Invokes the local Qwen 2.5 7B CBSE AI tutor in the selected grade ('9'–'12') and mode.
     """
     active_grade = request.grade or "10"
     active_mode = request.mode or "socratic"
@@ -222,7 +211,6 @@ async def chat(request: ChatRequest):
                 grade=active_grade,
             )
         except TypeError:
-            # Backward-compatibility if generate_tutor_reply is mocked with older signature in unit tests
             reply = generate_tutor_reply(
                 student_message=request.message,
                 history=formatted_history,
@@ -235,23 +223,23 @@ async def chat(request: ChatRequest):
         )
 
     except APITimeoutError as e:
-        logger.error("[AI TIMEOUT] Model timed out for student %s: %s", request.student_id, e)
+        logger.error("[AI TIMEOUT] Local model timed out for student %s: %s", request.student_id, e)
         reply = "I took a little too long thinking about that. Could you ask again or try rephrasing your question?"
         response_status = "fallback"
 
     except RateLimitError as e:
-        logger.error("[AI RATE LIMIT] Rate limit hit from AI service: %s", e)
-        reply = "A lot of students are studying right now! Please wait a moment and try asking again."
+        logger.error("[AI RATE LIMIT] Rate limit hit: %s", e)
+        reply = "Please wait a moment and try asking again."
         response_status = "fallback"
 
     except APIConnectionError as e:
-        logger.error("[AI CONNECTION ERROR] Failed connecting to AI service: %s", e)
-        reply = "I'm having a little trouble connecting to my study resources. Please give me a moment and try again."
+        logger.error("[AI CONNECTION ERROR] Local Ollama server not reachable: %s", e)
+        reply = "I couldn't connect to the local Qwen 2.5 7B engine (http://localhost:11434). Make sure Ollama is running!"
         response_status = "fallback"
 
     except Exception as e:
         logger.exception("[AI ERROR] Unexpected error in /chat endpoint: %s", e)
-        reply = "Something unexpected happened on my end. Please try asking your question again in a moment!"
+        reply = "Something unexpected happened on my end. Please make sure the local Qwen 2.5 7B model is loaded and try again!"
         response_status = "fallback"
 
     return ChatResponse(

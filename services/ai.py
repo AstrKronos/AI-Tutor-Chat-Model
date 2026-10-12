@@ -1,31 +1,14 @@
-import logging
+﻿import logging
 import os
 import re
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
-from openai import APIStatusError, OpenAI
+from openai import OpenAI
 
 # Load environment variables
 load_dotenv()
 
 logger = logging.getLogger("ai_tutor_service")
-
-PLACEHOLDERS = {
-    "",
-    "PASTE_YOUR_KEY_HERE",
-    "PASTE_YOUR_NVIDIA_KEY_HERE",
-    "PASTE_YOUR_OPENCODE_KEY_HERE",
-    "your_gemini_api_key_here",
-    "your_nvidia_api_key_here",
-    "your_opencode_api_key_here",
-}
-
-GEMINI_MODEL_POOL = [
-    "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite",
-    "gemma-4-26b-a4b-it",
-    "gemini-3.5-flash",
-]
 
 VALID_GRADES = ("9", "10", "11", "12")
 
@@ -113,102 +96,40 @@ Rules:
 """
 
 
-def get_active_provider() -> str:
-    """Determine preferred AI provider ('opencode', 'nvidia', or 'gemini')."""
-    provider = (os.getenv("AI_PROVIDER") or "opencode").strip().lower()
-    if provider in ("opencode", "nvidia", "gemini"):
-        return provider
-    return "opencode"
+def _ensure_ollama_server_running() -> None:
+    """Automatically start the local Ollama server in the background if it is not already running."""
+    from pathlib import Path
+    import subprocess
+    import urllib.request
 
+    try:
+        urllib.request.urlopen("http://localhost:11434/api/version", timeout=1.5)
+        return
+    except Exception:
+        pass
 
-def _build_candidates(preferred_provider: str, model_override: Optional[str] = None) -> List[tuple[OpenAI, str, str]]:
-    """Build an ordered list of (OpenAI client, model, provider_name) candidates."""
-    candidates: List[tuple[OpenAI, str, str]] = []
-    provider_order = [preferred_provider] + [
-        p for p in ("opencode", "nvidia", "gemini") if p != preferred_provider
-    ]
-
-    for prov in provider_order:
-        if prov == "opencode":
-            key = (os.getenv("OPENCODE_API_KEY") or "").strip()
-            if key not in PLACEHOLDERS:
-                client = OpenAI(base_url="https://opencode.ai/zen/v1", api_key=key, timeout=20.0)
-                m = (model_override if prov == preferred_provider else None) or os.getenv(
-                    "OPENCODE_MODEL", "nemotron-3.5-lightning-free"
-                )
-                candidates.append((client, m, "opencode"))
-
-        elif prov == "nvidia":
-            key = (os.getenv("NVIDIA_API_KEY") or "").strip()
-            if key not in PLACEHOLDERS:
-                client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=key, timeout=30.0)
-                m = (model_override if prov == preferred_provider else None) or os.getenv(
-                    "NVIDIA_MODEL", "meta/llama-3.2-11b-vision-instruct"
-                )
-                candidates.append((client, m, "nvidia"))
-
-        elif prov == "gemini":
-            key = (os.getenv("GEMINI_API_KEY") or "").strip()
-            if key not in PLACEHOLDERS:
-                client = OpenAI(
-                    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-                    api_key=key,
-                    timeout=25.0,
-                )
-                primary_gemini = (model_override if prov == preferred_provider else None) or os.getenv(
-                    "GEMINI_MODEL", "gemini-3.5-flash-lite"
-                )
-                models_to_try = [primary_gemini] + [
-                    gm for gm in GEMINI_MODEL_POOL if gm != primary_gemini
-                ]
-                for gm in models_to_try:
-                    candidates.append((client, gm, "gemini"))
-
-    return candidates
-
-
-def _call_provider(
-    client: OpenAI,
-    target_model: str,
-    provider: str,
-    messages: List[Dict[str, str]],
-    is_longer_mode: bool = False,
-) -> str:
-    """Execute the chat completion call for a specific provider."""
-    max_tokens = 1500 if is_longer_mode else 350
-    req_timeout = 45.0 if is_longer_mode else 25.0
-
-    if provider == "gemini" and target_model.startswith("gemini-"):
-        response = client.chat.completions.create(
-            model=target_model,
-            messages=messages,
-            temperature=0.3 if is_longer_mode else 0.4,
-            max_tokens=max_tokens,
-            reasoning_effort="low",
-            timeout=req_timeout,
+    ollama_exe = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Ollama" / "ollama.exe"
+    cmd = [str(ollama_exe) if ollama_exe.exists() else "ollama", "serve"]
+    try:
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            creationflags=creationflags,
         )
-    else:
-        response = client.chat.completions.create(
-            model=target_model,
-            messages=messages,
-            temperature=0.3 if is_longer_mode else 0.4,
-            max_tokens=max_tokens,
-            timeout=req_timeout,
-        )
-
-    if not response.choices or not response.choices[0].message:
-        raise RuntimeError("No response returned by the model.")
-
-    content = (response.choices[0].message.content or "").strip()
-    if not content:
-        return (
-            "I am here strictly as your CBSE AI tutor (Classes 9th to 12th) to guide you step-by-step. "
-            "Which subject or question would you like to work on today?"
-        )
-    return content
+    except Exception as exc:
+        logger.warning("Could not auto-start Ollama server: %s", exc)
 
 
-_WORKING_CANDIDATE_INDEX: int = 0
+def get_local_client_and_model(model_override: Optional[str] = None) -> tuple[OpenAI, str]:
+    """Return the local OpenAI-compatible client (Ollama) and target Qwen 2.5 7B model."""
+    _ensure_ollama_server_running()
+    base_url = (os.getenv("LOCAL_BASE_URL") or "http://localhost:11434/v1").strip()
+    target_model = model_override or os.getenv("LOCAL_MODEL", "qwen2.5:7b")
+    client = OpenAI(base_url=base_url, api_key="ollama", timeout=120.0)
+    return client, target_model
 
 
 def generate_tutor_reply(
@@ -219,7 +140,7 @@ def generate_tutor_reply(
     grade: str = "10",
 ) -> str:
     """
-    Generate an AI tutor reply for a CBSE student in Classes 9th to 12th.
+    Generate an AI tutor reply locally using Qwen 2.5 7B (100% offline, no API keys required).
 
     Supported Grades:
       '9' (9th), '10' (10th), '11' (11th), '12' (12th)
@@ -229,14 +150,11 @@ def generate_tutor_reply(
       2. 'detailed_explanation' — Deep conceptual mastery with real-world analogies and breakdown.
       3. 'exam_ready' — Complete CBSE Exam model answer (bold keywords, formulas, point-wise, examiner tips).
     """
-    global _WORKING_CANDIDATE_INDEX
-
     normalized_grade = normalize_grade(grade)
     normalized_mode = (mode or "socratic").lower().strip().replace(" ", "_").replace("-", "_")
     system_prompt = build_system_prompt_for_mode(normalized_mode, grade=normalized_grade)
     is_longer_mode = normalized_mode in ("detailed_explanation", "exam_ready")
 
-    # Build conversation payload starting with the system prompt
     messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
 
     if history:
@@ -248,39 +166,24 @@ def generate_tutor_reply(
 
     messages.append({"role": "user", "content": student_message})
 
-    candidates = _build_candidates(get_active_provider(), model_override=model)
-    if not candidates:
-        raise ValueError(
-            "No valid API key found in .env. Please set OPENCODE_API_KEY, NVIDIA_API_KEY, or GEMINI_API_KEY."
-        )
+    client, target_model = get_local_client_and_model(model_override=model)
+    max_tokens = 1500 if is_longer_mode else 350
 
-    idx_order = list(range(_WORKING_CANDIDATE_INDEX, len(candidates))) + list(
-        range(0, _WORKING_CANDIDATE_INDEX)
+    response = client.chat.completions.create(
+        model=target_model,
+        messages=messages,
+        temperature=0.3 if is_longer_mode else 0.4,
+        max_tokens=max_tokens,
+        timeout=90.0 if is_longer_mode else 45.0,
     )
 
-    last_error: Optional[Exception] = None
-    for idx in idx_order:
-        client, target_model, prov = candidates[idx]
-        try:
-            reply = _call_provider(
-                client,
-                target_model,
-                prov,
-                messages,
-                is_longer_mode=is_longer_mode,
-            )
-            _WORKING_CANDIDATE_INDEX = idx
-            return reply
-        except APIStatusError as err:
-            last_error = err
-            logger.info(
-                "Candidate '%s' (%s) returned HTTP %s; rotating to next available model/provider...",
-                prov,
-                target_model,
-                err.status_code,
-            )
-            continue
+    if not response.choices or not response.choices[0].message:
+        raise RuntimeError("No response returned by local Qwen 2.5 7B model.")
 
-    if last_error:
-        raise last_error
-    raise RuntimeError("Failed to generate reply from configured providers.")
+    content = (response.choices[0].message.content or "").strip()
+    if not content:
+        return (
+            "I am here strictly as your CBSE AI tutor (Classes 9th to 12th) to guide you step-by-step. "
+            "Which subject or question would you like to work on today?"
+        )
+    return content

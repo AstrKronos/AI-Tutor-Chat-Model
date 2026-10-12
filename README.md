@@ -1,6 +1,6 @@
-# CBSE AI Tutor (Classes 9th to 12th) — Backend API
+﻿# Socra — Offline CBSE AI Tutor (Classes 9th to 12th | Qwen 2.5 7B)
 
-A lightweight, guardrailed Python backend for a CBSE AI Tutor supporting **Classes 9th to 12th** and **3 Function Modes** (`socratic`, `detailed_explanation`, and `exam_ready`), built with **FastAPI** and **NVIDIA NIM / Google Gemini / OpenCode Zen**.
+A 100% offline, local Python backend for a CBSE AI Tutor running natively on **Qwen 2.5 7B (`qwen2.5:7b`)** via **Ollama**, supporting **Classes 9th to 12th** and **3 Function Modes** (`socratic`, `detailed_explanation`, and `exam_ready`). Requires **zero API keys** and **zero internet connection**.
 
 ---
 
@@ -9,18 +9,18 @@ A lightweight, guardrailed Python backend for a CBSE AI Tutor supporting **Class
 ```text
 C:\Socra\
 ├── main.py                    # FastAPI app (/chat and /health endpoints)
-├── chat_cli.py                # Interactive CLI tool (asks for Grade 9th–12th & Function Mode)
+├── chat_cli.py                # Interactive CLI tool (prompts for Grade 9th–12th & Function Mode)
 ├── prompts/
 │   └── tutor_prompt.txt       # System prompt with Socratic & CBSE 9th-12th guardrails
 ├── services/
-│   └── ai.py                  # Multi-provider AI router supporting Grades 9–12 & 3 function modes
+│   └── ai.py                  # Local Qwen 2.5 7B AI service supporting Grades 9–12 & 3 function modes
 ├── tests/
 │   ├── test_prompt.py         # Socratic & guardrail test suite
 │   ├── test_modes.py          # Automated 3-mode verification suite
-│   └── test_api.py            # Automated FastAPI endpoint, grade validation & fallback tests
+│   └── test_api.py            # Automated FastAPI endpoint & grade validation tests
 ├── requirements.txt           # Python dependencies
-├── .env.example               # Environment variables template
-└── README.md                  # Setup & Frontend Integration Guide
+├── .env.example               # Local configuration template
+└── README.md                  # Offline Setup & Frontend Integration Guide
 ```
 
 ---
@@ -38,7 +38,24 @@ C:\Socra\
 
 ---
 
-## 2. Local Setup & Running
+## 2. One-Time Local Setup (100% Offline After Setup)
+
+### Step 1: Install Ollama & Pull Qwen 2.5 7B
+```powershell
+winget install -e --id Ollama.Ollama
+ollama pull qwen2.5:7b
+```
+
+### Step 2: Install Python Dependencies
+```powershell
+cd C:\Socra
+python -m venv .venv
+.\.venv\Scripts\pip install -r requirements.txt
+```
+
+---
+
+## 3. Running Offline
 
 ### Interactive Terminal Chat (Prompts for Grade 9th–12th & Mode)
 ```powershell
@@ -58,7 +75,7 @@ cd C:\Socra
 
 ---
 
-## 3. Frontend Developer Integration Snippet
+## 4. Frontend Developer Integration Snippet
 
 CORS is enabled for **all origins (`*`)**.
 

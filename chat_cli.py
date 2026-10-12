@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 from pathlib import Path
 
@@ -13,71 +13,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from services.ai import (
-    PLACEHOLDERS,
-    generate_tutor_reply,
-    get_active_provider,
-    normalize_grade,
-)
+from services.ai import generate_tutor_reply, normalize_grade
 
 MODE_LABELS = {
     "socratic": "Socratic Method",
     "detailed_explanation": "Detailed Explanation",
     "exam_ready": "Exam Ready (CBSE Board Format)",
 }
-
-
-def ensure_api_key():
-    provider = get_active_provider()
-    env_file = PROJECT_ROOT / ".env"
-
-    if provider == "opencode":
-        key = (os.getenv("OPENCODE_API_KEY") or "").strip()
-        if key in PLACEHOLDERS:
-            print("\n" + "=" * 70)
-            print("  OPENCODE API KEY REQUIRED")
-            print("=" * 70)
-            user_key = input("Please paste your OpenCode API key here: ").strip()
-            if not user_key:
-                print("No key entered. Exiting.")
-                sys.exit(1)
-            os.environ["OPENCODE_API_KEY"] = user_key
-            if env_file.exists():
-                text = env_file.read_text(encoding="utf-8")
-                text = text.replace("OPENCODE_API_KEY=PASTE_YOUR_OPENCODE_KEY_HERE", f"OPENCODE_API_KEY={user_key}")
-                text = text.replace("OPENCODE_API_KEY=your_opencode_api_key_here", f"OPENCODE_API_KEY={user_key}")
-                env_file.write_text(text, encoding="utf-8")
-                print("Saved OPENCODE_API_KEY to .env for future runs!")
-
-    elif provider == "nvidia":
-        key = (os.getenv("NVIDIA_API_KEY") or "").strip()
-        if key in PLACEHOLDERS:
-            print("\n" + "=" * 70)
-            print("  NVIDIA API KEY REQUIRED")
-            print("=" * 70)
-            user_key = input("Please paste your NVIDIA API key here (nvapi-...): ").strip()
-            if not user_key:
-                print("No key entered. Exiting.")
-                sys.exit(1)
-            os.environ["NVIDIA_API_KEY"] = user_key
-            if env_file.exists():
-                text = env_file.read_text(encoding="utf-8")
-                text = text.replace("NVIDIA_API_KEY=PASTE_YOUR_NVIDIA_KEY_HERE", f"NVIDIA_API_KEY={user_key}")
-                text = text.replace("NVIDIA_API_KEY=your_nvidia_api_key_here", f"NVIDIA_API_KEY={user_key}")
-                env_file.write_text(text, encoding="utf-8")
-                print("Saved NVIDIA_API_KEY to .env for future runs!")
-
-    else:
-        key = (os.getenv("GEMINI_API_KEY") or "").strip()
-        if key in PLACEHOLDERS:
-            print("\n" + "=" * 70)
-            print("  GEMINI API KEY REQUIRED")
-            print("=" * 70)
-            user_key = input("Please paste your Gemini API key here: ").strip()
-            if not user_key:
-                print("No key entered. Exiting.")
-                sys.exit(1)
-            os.environ["GEMINI_API_KEY"] = user_key
 
 
 def prompt_for_grade() -> str:
@@ -98,11 +40,10 @@ def prompt_for_grade() -> str:
 
 
 def interactive_chat():
-    ensure_api_key()
-    provider = get_active_provider().upper()
+    local_model = os.getenv("LOCAL_MODEL", "qwen2.5:7b")
 
     print("\n" + "=" * 75)
-    print(f"  CBSE AI TUTOR (CLASSES 9TH TO 12TH) - INTERACTIVE TESTER ({provider})")
+    print(f"  CBSE AI TUTOR (CLASSES 9TH TO 12TH) - LOCAL OFFLINE ({local_model.upper()})")
     print("=" * 75)
 
     current_grade = prompt_for_grade()
@@ -117,10 +58,10 @@ def interactive_chat():
     mode_map = {"1": "socratic", "2": "detailed_explanation", "3": "exam_ready"}
     current_mode = mode_map.get(choice, "socratic")
 
-    print(f"\n[Active Setup: Class {current_grade}th CBSE | Mode: {MODE_LABELS[current_mode]}]")
+    print(f"\n[Active Setup: Class {current_grade}th CBSE | Mode: {MODE_LABELS[current_mode]} | Model: {local_model}]")
     print("Quick Commands anytime in chat:")
     print("  - Mode switch : '/socratic', '/detailed', or '/exam'")
-    print("  - Grade switch: '/9', '/10', '/11', '/12' (or '/grade')" )
+    print("  - Grade switch: '/9', '/10', '/11', '/12' (or '/grade')")
     print("  - Session     : 'clear' to reset history | 'exit' to quit\n" + "=" * 75)
 
     history = []
@@ -182,7 +123,7 @@ def interactive_chat():
             print(f"[Switched Mode to: {MODE_LABELS[current_mode]}]")
             continue
 
-        print("\nTutor is thinking...")
+        print("\nTutor is thinking (running locally on GPU)...")
         try:
             reply = generate_tutor_reply(
                 student_message=user_input,
